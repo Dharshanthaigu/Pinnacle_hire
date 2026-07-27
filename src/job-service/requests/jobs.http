@@ -1,0 +1,38 @@
+### Create job (poster) — this internally calls auth-service for invoice check
+POST {{jobBaseUrl}}
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "jobTitle":"Test Job",
+  "description":"Testing cross-service call",
+  "category":"plumbing",
+  "jobType":"one-time",
+  "workflowType":"daily_wage",
+  "location":{"address":"Chennai","lat":13.08,"lng":80.27},
+  "salary":{"amount":500,"type":"fixed"}
+}
+
+### Accept job (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/accept
+Authorization: Bearer {{seekerToken}}
+
+### Verify job — this internally calls auth-service for candidate match info
+PATCH {{jobBaseUrl}}/{{jobId}}/verify
+Authorization: Bearer {{seekerToken}}
+
+### Approve job (poster)
+PATCH {{jobBaseUrl}}/{{jobId}}/approve
+Authorization: Bearer {{posterToken}}
+
+### Confirm (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{seekerToken}}
+
+### Confirm (poster)
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{posterToken}}
+
+### Finalize — this calls auth-service to update reputation (the real test of the split)
+PATCH {{jobBaseUrl}}/{{jobId}}/finalize
+Authorization: Bearer {{posterToken}}

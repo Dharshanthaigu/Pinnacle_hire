@@ -1,0 +1,71 @@
+services:
+  frontend:
+    image: pinnacle-hire-frontend
+    container_name: pinnacle-hire-frontend
+    build: ./pinnacle-hire-frontend
+    env_file:
+      - ./pinnacle-hire-frontend/.env
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - frontend-ns
+
+  backend:
+    image: pinnacle-hire-backend
+    container_name: pinnacle-hire-backend
+    build: ./pinnacle-hire-backend
+    env_file:
+      - ./pinnacle-hire-backend/.env
+    expose:
+      - 5000
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - redis
+    networks:
+      - frontend-ns
+      - backend-ns
+
+  redis:
+    image: redis:7-alpine
+    container_name: storix-redis
+    expose:
+      - 6379
+    networks:
+      - backend-ns
+
+  db:
+    container_name: name
+    networks:
+      - backend-ns
+  prometheus:
+    image: 
+    networks:
+      - backend-ns 
+  grafana:
+    image: imageName
+
+  load_test:
+    build: alpine
+    command: bash load_test-backend.sh
+    volumes:
+      - load_data:./load_test/load_test-backend.sh:ro
+
+
+
+
+volumes:
+  redis-data:
+  load_data:
+
+networks:
+  frontend-ns:
+  backend-ns:
