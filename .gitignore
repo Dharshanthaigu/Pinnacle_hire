@@ -24,3 +24,6 @@ coverage/
 # Build artifacts (if any ever get added)
 dist/
 build/
+# Dev-only files (kept out of main/archive)
+.vscode/
+**/requests/
