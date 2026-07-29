@@ -1,6 +1,6 @@
 // ---- Step 4: host approval (shared across all three) ----
 export function approveByHost(job) {
-  if (job.status !== "verifying" && job.status !== "accepted") {
+  if (!["verifying", "accepted", "confirmed"].includes(job.status)) {
     throw new Error("Job is not awaiting host approval");
   }
   job.status = job.workflowType === "daily_wage" ? "awaiting_proof" : "connecting";

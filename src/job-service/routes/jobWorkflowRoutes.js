@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
-import { verifyJob, approveJob, confirmJob, finalizeJobHandler , acceptJob, payInvoice } from "../controllers/jobWorkflowController.js";
+import { verifyJob, approveJob, confirmJob, finalizeJobHandler , acceptJob,submitProof, payInvoice } from "../controllers/jobWorkflowController.js";
 
 const router = Router();
 
@@ -10,5 +10,6 @@ router.patch("/:id/confirm", requireAuth, confirmJob);
 router.patch("/:id/finalize", requireAuth, finalizeJobHandler);
 router.patch("/:id/accept", requireAuth, acceptJob);
 router.patch("/:id/pay-invoice", requireAuth, payInvoice);
+router.patch("/:id/submit-proof", requireAuth, submitProof);
 
 export default router;

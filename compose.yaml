@@ -1,29 +1,18 @@
 services:
-  frontend:
-    image: pinnacle-hire-frontend
-    container_name: pinnacle-hire-frontend
-    build: ./pinnacle-hire-frontend
+  auth-service:
+    image: auth-service
+    container_name: auth-service
+    build: ./src/auth-service
     env_file:
-      - ./pinnacle-hire-frontend/.env
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
-    networks:
-      - frontend-ns
-
-  backend:
-    image: pinnacle-hire-backend
-    container_name: pinnacle-hire-backend
-    build: ./pinnacle-hire-backend
-    env_file:
-      - ./pinnacle-hire-backend/.env
+      - ./src/auth-service/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
     expose:
-      - 5000
+      - 5001
     ports:
-      - "5000:5000"
+      - "5001:5001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
       timeout: 30s
       retries: 5
@@ -31,41 +20,45 @@ services:
     depends_on:
       - redis
     networks:
-      - frontend-ns
+      - backend-ns
+
+  job-service:
+    image: job-service
+    container_name: job-service
+    build: ./src/job-service
+    env_file:
+      - ./src/job-service/.env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - REDIS_URL=redis://redis:6379
+    expose:
+      - 5002
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - redis
+      - auth-service
+    networks:
       - backend-ns
 
   redis:
     image: redis:7-alpine
-    container_name: storix-redis
+    container_name: pinnacle-redis
     expose:
       - 6379
-    networks:
-      - backend-ns
-
-  db:
-    container_name: name
-    networks:
-      - backend-ns
-  prometheus:
-    image: 
-    networks:
-      - backend-ns 
-  grafana:
-    image: imageName
-
-  load_test:
-    build: alpine
-    command: bash load_test-backend.sh
     volumes:
-      - load_data:./load_test/load_test-backend.sh:ro
-
-
-
+      - redis-data:/data
+    networks:
+      - backend-ns
 
 volumes:
   redis-data:
-  load_data:
 
 networks:
-  frontend-ns:
   backend-ns:

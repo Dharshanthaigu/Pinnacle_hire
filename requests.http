@@ -1,0 +1,93 @@
+### Health check - auth
+GET http://localhost:5001/health
+
+###
+
+### Health check - job
+GET http://localhost:5002/health
+
+###
+
+### Register poster
+POST {{authBaseUrl}}/register
+Content-Type: application/json
+
+{ "name":"Test Poster","email":"poster@test.com","password":"password123","phone":"9876543210","role":"poster" }
+
+###
+
+### Register seeker
+POST {{authBaseUrl}}/register
+Content-Type: application/json
+
+{ "name":"Test Seeker","email":"seeker@test.com","password":"password123","phone":"9876500000","role":"seeker" }
+
+###
+
+### Login as poster (copy token into settings.json -> posterToken)
+POST {{authBaseUrl}}/login
+Content-Type: application/json
+
+{ "email":"poster@test.com","password":"password123" }
+
+###
+
+### Login as seeker (copy token into settings.json -> seekerToken)
+POST {{authBaseUrl}}/login
+Content-Type: application/json
+
+{ "email":"seeker@test.com","password":"password123" }
+
+###
+
+### Create job (poster) — internally calls auth-service for invoice check
+# copy _id from response into settings.json -> jobId
+POST {{jobBaseUrl}}
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "jobTitle":"Docker verification job",
+  "description":"Testing cross-service call through Docker",
+  "category":"plumbing",
+  "jobType":"one-time",
+  "workflowType":"daily_wage",
+  "location":{"address":"Chennai","lat":13.08,"lng":80.27},
+  "salary":{"amount":500,"type":"fixed"}
+}
+
+###
+
+### Accept job (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/accept
+Authorization: Bearer {{seekerToken}}
+
+###
+
+### Verify job — internally calls auth-service for candidate match info
+PATCH {{jobBaseUrl}}/{{jobId}}/verify
+Authorization: Bearer {{seekerToken}}
+
+###
+
+### Approve job (poster)
+PATCH {{jobBaseUrl}}/{{jobId}}/approve
+Authorization: Bearer {{posterToken}}
+
+###
+
+### Confirm (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{seekerToken}}
+
+###
+
+### Confirm (poster)
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{posterToken}}
+
+###
+
+### Finalize — calls auth-service to update reputation (the real test of the split)
+PATCH {{jobBaseUrl}}/{{jobId}}/finalize
+Authorization: Bearer {{posterToken}}
