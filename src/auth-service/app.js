@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { randomUUID } from "crypto";
 import { logger } from "./config/logger.js";
+import { register, httpRequestDuration } from "./config/metrics.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import authRoutes from "./routes/authRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
@@ -28,9 +29,23 @@ app.use(
   })
 );
 
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on("finish", () => {
+    end({ method: req.method, route: req.route?.path || req.path, status_code: res.statusCode });
+  });
+  next();
+});
+
 app.get("/health", (req, res) => res.json({ status: "ok", service: "auth-service" }));
+
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use(errorHandler);
 
-export default app;1345
+export default app; 

@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import mongoose from "mongoose";
 import { randomUUID } from "crypto";
 import { logger } from "./config/logger.js";
+import { register, httpRequestDuration } from "./config/metrics.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import jobRoutes from "./routes/jobRoutes.js";
 import jobWorkflowRoutes from "./routes/jobWorkflowRoutes.js";
@@ -28,9 +29,22 @@ app.use(
   })
 );
 
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on("finish", () => {
+    end({ method: req.method, route: req.route?.path || req.path, status_code: res.statusCode });
+  });
+  next();
+});
+
 app.get("/health", (req, res) => {
   const dbOk = mongoose.connection.readyState === 1;
   res.status(dbOk ? 200 : 503).json({ status: dbOk ? "ok" : "degraded", service: "job-service", db: dbOk });
+});
+
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
 });
 
 app.use("/api/jobs", jobRoutes);

@@ -16,7 +16,10 @@ export const createJob = async (req, res, next) => {
     }
 
     const invoiceRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/invoice-status/${req.user.id}`, {
-      headers: { Authorization: req.headers.authorization },
+      headers: {
+        Authorization: req.headers.authorization,
+        "x-request-id": req.id,
+      },
     });
     if (invoiceRes.ok) {
       const { hasUnpaidInvoice } = await invoiceRes.json();
@@ -49,8 +52,7 @@ export const verifyJob = async (req, res, next) => {
   try {
     const job = await Job.findById(req.params.id);
     if (!job) return res.status(404).json({ error: "Job not found" });
-
-    await runVerification(job, job.acceptedBy, req.headers.authorization);
+    await runVerification(job, job.acceptedBy, req.headers.authorization, req.id);
     await job.save();
     res.json(job);
   } catch (err) {
@@ -182,7 +184,10 @@ export const payInvoice = async (req, res, next) => {
     if (!stillOwing) {
       await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/invoice-status/${req.user.id}/clear`, {
         method: "PATCH",
-        headers: { Authorization: req.headers.authorization },
+        headers: {
+          Authorization: req.headers.authorization,
+          "x-request-id": req.id,
+        },
       });
     }
 
@@ -190,4 +195,4 @@ export const payInvoice = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-};
+}; 
