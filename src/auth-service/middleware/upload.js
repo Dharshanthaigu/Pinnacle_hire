@@ -1,38 +1,20 @@
-import multer from "multer"
-import path from "path"
-import { randomUUID } from "crypto"
-import fs from "fs"
+﻿import multer from "multer";
 
-const UPLOAD_DIR = "uploads"
-
-if(!fs.existsSync(UPLOAD_DIR)){
-    fs.mkdirSync(UPLOAD_DIR,{recursive: true})
-}
-
-const storage = multer.diskStorage({
-    destination: (req,file,cb) => cb(null,UPLOAD_DIR),
-    filename: (req,file,cb) =>{
-        const ext = path.extname(file.originalname)
-        cb(null,`${randomUUID()}${ext}`)
-    }
-})
-
-const ALLOWED_MIME = new Set([
+const ALLOWED_MIME_TYPES = [
   "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/jpeg",
   "image/png",
-  "image/webp",
-]);
-
-const fileFilter = (req,file,cb) =>{
-    if(!ALLOWED_MIME.has(file.mimetype)){
-        return cb(new Error("Unsupported file type"))
-    }
-    cb(null,true)
-}
+];
 
 export const upload = multer({
-    storage,
-    fileFilter,
-    limits: {fileSize: 10 * 1024 * 1024}
-})
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error("Unsupported file type. Upload a PDF, Word doc, or image."));
+    }
+    cb(null, true);
+  },
+});

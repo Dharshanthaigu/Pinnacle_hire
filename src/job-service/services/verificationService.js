@@ -4,10 +4,13 @@ import Job from "../models/Job.js";
 const RESPOND_DEADLINE_DAYS = 5;
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001";
 
-export async function runVerification(job, candidateId, authHeader) {
+export async function runVerification(job, candidateId, authHeader,requestId) {
   if (job.workflowType === "daily_wage") {
     const response = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/candidate-match-info/${candidateId}`, {
-      headers: { Authorization: authHeader },
+      headers: {
+        Authorization: authHeader,
+        "x-request-id": requestId,
+      },
     });
     if (!response.ok) throw new Error("Unable to fetch candidate info");
     const candidate = await response.json();
