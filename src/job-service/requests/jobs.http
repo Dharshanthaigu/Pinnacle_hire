@@ -1,38 +1,247 @@
-### Create job (poster) — this internally calls auth-service for invoice check
+### ============================================================
+### DAILY WAGE FLOW
+### Requires: auth.http's poster complete-profile run, and
+### seeker complete-profile run with the daily_wage block active.
+### ============================================================
+
+### Create job (poster) — daily_wage, all currently-required fields included
 POST {{jobBaseUrl}}
 Authorization: Bearer {{posterToken}}
 Content-Type: application/json
 
 {
-  "jobTitle":"Test Job",
-  "description":"Testing cross-service call",
-  "category":"plumbing",
-  "jobType":"one-time",
-  "workflowType":"daily_wage",
-  "location":{"address":"Chennai","lat":13.08,"lng":80.27},
-  "salary":{"amount":500,"type":"fixed"}
+  "jobTitle": "Test Job",
+  "description": "Testing the current daily_wage workflow end to end",
+  "category": "plumbing",
+  "jobType": "one-time",
+  "workflowType": "daily_wage",
+  "location": { "address": "Chennai", "lat": 13.08, "lng": 80.27 },
+  "salary": { "amount": 500, "type": "fixed" },
+  "minExperience": 1,
+  "numberOfOpenings": 1,
+  "applicationDeadline": "{{$datetime iso8601 3 d}}",
+  "workMode": "on-site",
+  "jobContactPhone": "9000011111",
+  "postingAttested": true,
+  "foodProvided": false,
+  "transportationProvided": false,
+  "workStartDate": "{{$datetime iso8601 2 d}}",
+  "workEndDate": "{{$datetime iso8601 2 d}}",
+  "workingHoursStart": "09:00",
+  "workingHoursEnd": "18:00",
+  "instructionsText": "Bring your own tools, main switch is in the hallway",
+  "instructionsDurationMinutes": 0.5
 }
 
 ### Accept job (seeker)
 PATCH {{jobBaseUrl}}/{{jobId}}/accept
 Authorization: Bearer {{seekerToken}}
 
-### Verify job — this internally calls auth-service for candidate match info
-PATCH {{jobBaseUrl}}/{{jobId}}/verify
-Authorization: Bearer {{seekerToken}}
-
-### Approve job (poster)
-PATCH {{jobBaseUrl}}/{{jobId}}/approve
+### Poster accepts the candidate — starts the instructions timer
+PATCH {{jobBaseUrl}}/{{jobId}}/accept-candidate
 Authorization: Bearer {{posterToken}}
 
-### Confirm (seeker)
+### Seeker starts work — only works once the timer (instructions.readyAt) has passed
+### With 0.5 min (30s) duration above, wait 30+ seconds after accept-candidate before running this
+PATCH {{jobBaseUrl}}/{{jobId}}/start-work
+Authorization: Bearer {{seekerToken}}
+
+### Upload a proof file first (auth-service GridFS) — copy the returned fileId
+### into the proofFileId variable in settings.json before running submit-proof below.
+POST {{authBaseUrl}}/../uploads
+Authorization: Bearer {{seekerToken}}
+Content-Type: multipart/form-data; boundary=----WebKitBoundary
+
+------WebKitBoundary
+Content-Disposition: form-data; name="file"; filename="proof.jpg"
+Content-Type: image/jpeg
+
+< ./sample-files/proof.jpg
+------WebKitBoundary--
+
+### Submit proof (seeker) — needs fileId + filename from the upload response above
+POST {{jobBaseUrl}}/{{jobId}}/submit-proof
+Authorization: Bearer {{seekerToken}}
+Content-Type: application/json
+
+{
+  "fileId": "{{proofFileId}}",
+  "filename": "proof.jpg",
+  "note": "Work completed as instructed"
+}
+
+### Confirm completion — seeker first
 PATCH {{jobBaseUrl}}/{{jobId}}/confirm
 Authorization: Bearer {{seekerToken}}
 
-### Confirm (poster)
+### Confirm completion — poster second
+### This single call auto-finalizes the job (status -> completed, commission
+### set, reputation/invoice updated). There is no separate /finalize request
+### anymore - do not add one back.
 PATCH {{jobBaseUrl}}/{{jobId}}/confirm
 Authorization: Bearer {{posterToken}}
 
-### Finalize — this calls auth-service to update reputation (the real test of the split)
-PATCH {{jobBaseUrl}}/{{jobId}}/finalize
+
+### ============================================================
+### MID-LEVEL FLOW
+### Requires: auth.http's poster complete-profile run, and
+### seeker complete-profile run with the mid_level block active
+### (comment out daily_wage, uncomment mid_level in auth.http first).
+### ============================================================
+
+### Create job (poster) — mid_level
+POST {{jobBaseUrl}}
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "jobTitle": "Backend Developer",
+  "description": "Build and maintain REST APIs for our platform",
+  "category": "Software Development",
+  "jobType": "full-time",
+  "workflowType": "mid_level",
+  "location": { "address": "Trichy", "lat": 10.79, "lng": 78.70 },
+  "salary": { "amount": 85000, "type": "fixed" },
+  "minExperience": 3,
+  "numberOfOpenings": 1,
+  "applicationDeadline": "{{$datetime iso8601 3 d}}",
+  "workMode": "hybrid",
+  "jobContactPhone": "9000022222",
+  "postingAttested": true,
+  "requiredSkills": ["Node.js", "MongoDB", "Express"],
+  "reviewTimerDurationMinutes": 0.5,
+  "minClientProjectExperience": 1,
+  "minTeamSizeExperience": 2
+}
+
+### Accept job (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/accept
+Authorization: Bearer {{seekerToken}}
+
+### Poster accepts the candidate — status moves to "confirmed"
+PATCH {{jobBaseUrl}}/{{jobId}}/accept-candidate
+Authorization: Bearer {{posterToken}}
+
+### Poster reviews the candidate's profile (fetches from auth-service)
+GET {{jobBaseUrl}}/{{jobId}}/seeker-profile
+Authorization: Bearer {{posterToken}}
+
+### Poster submits review — moves status to "verifying"
+PATCH {{jobBaseUrl}}/{{jobId}}/review-candidate
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "posterEmail": "poster@test.com"
+}
+
+### Poster schedules the meeting — moves status to "connecting"
+PATCH {{jobBaseUrl}}/{{jobId}}/schedule-meeting
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "meetingDate": "{{$datetime iso8601 1 d}}",
+  "meetingLink": "https://meet.example.com/test-room"
+}
+
+### Seeker confirms attendance — this alone is enough now, no separate readiness timer step
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm-attendance
+Authorization: Bearer {{seekerToken}}
+
+### Confirm completion — seeker first
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{seekerToken}}
+
+### Confirm completion — poster second
+### Auto-finalizes: status -> completed, commission set (flat, 1500), reputation
+### updated, invoice flag set on poster since commission is unpaid. No separate
+### /finalize request exists.
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{posterToken}}
+
+### Poster pays the resulting invoice
+PATCH {{jobBaseUrl}}/{{jobId}}/pay-invoice
+Authorization: Bearer {{posterToken}}
+
+
+### ============================================================
+### LEADERSHIP FLOW
+### Requires: auth.http's poster complete-profile run, and
+### seeker complete-profile run with the leadership block active
+### (comment out daily_wage/mid_level, uncomment leadership in auth.http first).
+### ============================================================
+
+### Create job (poster) — leadership
+POST {{jobBaseUrl}}
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "jobTitle": "Engineering Manager",
+  "description": "Lead a 10-person backend team, own delivery roadmap",
+  "category": "Engineering Leadership",
+  "jobType": "full-time",
+  "workflowType": "leadership",
+  "location": { "address": "Trichy", "lat": 10.79, "lng": 78.70 },
+  "salary": { "amount": 250000, "type": "fixed" },
+  "minExperience": 5,
+  "numberOfOpenings": 1,
+  "applicationDeadline": "{{$datetime iso8601 3 d}}",
+  "workMode": "hybrid",
+  "jobContactPhone": "9000033333",
+  "postingAttested": true,
+  "requiredSkills": ["Team Leadership", "System Design"],
+  "reviewTimerDurationMinutes": 0.5,
+  "minDirectReportsToBoard": 1,
+  "requiredDomainExpertise": ["SaaS", "Fintech"]
+}
+
+### Accept job (seeker)
+PATCH {{jobBaseUrl}}/{{jobId}}/accept
+Authorization: Bearer {{seekerToken}}
+
+### Poster accepts the candidate — status moves to "confirmed"
+PATCH {{jobBaseUrl}}/{{jobId}}/accept-candidate
+Authorization: Bearer {{posterToken}}
+
+### Poster reviews the candidate's profile (fetches from auth-service)
+GET {{jobBaseUrl}}/{{jobId}}/seeker-profile
+Authorization: Bearer {{posterToken}}
+
+### Poster submits review — moves status to "verifying"
+PATCH {{jobBaseUrl}}/{{jobId}}/review-candidate
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "posterEmail": "poster@test.com"
+}
+
+### Poster schedules the meeting — moves status to "connecting"
+PATCH {{jobBaseUrl}}/{{jobId}}/schedule-meeting
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "meetingDate": "{{$datetime iso8601 1 d}}",
+  "meetingLink": "https://meet.example.com/test-room"
+}
+
+### Seeker confirms attendance
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm-attendance
+Authorization: Bearer {{seekerToken}}
+
+### Confirm completion — seeker first
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{seekerToken}}
+
+### Confirm completion — poster second
+### Auto-finalizes: status -> completed, commission set (flat, 5000), reputation
+### updated, invoice flag set on poster.
+PATCH {{jobBaseUrl}}/{{jobId}}/confirm
+Authorization: Bearer {{posterToken}}
+
+### Poster pays the resulting invoice
+PATCH {{jobBaseUrl}}/{{jobId}}/pay-invoice
 Authorization: Bearer {{posterToken}}

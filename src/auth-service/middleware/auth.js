@@ -1,6 +1,14 @@
 import jwt from "jsonwebtoken";
 
 export const requireAuth = (req, res, next) => {
+  // Service-to-service path: for callers that have no user (e.g. the Stripe
+  // webhook), a matching shared secret grants access instead of a JWT.
+  // This does NOT set req.user - only real logged-in users get that.
+  const internalKey = req.headers["x-internal-key"];
+  if (internalKey && process.env.INTERNAL_SERVICE_KEY && internalKey === process.env.INTERNAL_SERVICE_KEY) {
+    return next();
+  }
+
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
     return res.status(401).json({ error: "No token provided" });

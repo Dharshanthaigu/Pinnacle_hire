@@ -1,10 +1,10 @@
-import mongoose from "mongoose";
+﻿import mongoose from "mongoose";
 
 const jobSchema = new mongoose.Schema(
   {
     jobTitle: { type: String, required: true, trim: true },
     description: { type: String, required: true },
-    category: { type: String, required: true, trim: true }, // e.g. plumbing, IT, sales
+    category: { type: String, required: true, trim: true },
     jobType: {
       type: String,
       enum: ["full-time", "part-time", "gig", "contract", "one-time"],
@@ -32,16 +32,8 @@ const jobSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "open",
-        "accepted",
-        "verifying",       // resume/reference routed, awaiting host response
-        "confirmed",       // host approved
-        "connecting",      // meeting link stage (mid/leadership only)
-        "awaiting_proof",  // work started, proof not yet submitted (daily_wage)
-        "completed",
-        "disputed",
-        "expired",
-        "cancelled",
+        "open", "accepted", "instructions_sent", "verifying", "confirmed",
+        "connecting", "awaiting_proof", "completed", "disputed", "expired", "cancelled",
       ],
       default: "open",
     },
@@ -54,7 +46,6 @@ const jobSchema = new mongoose.Schema(
       },
     ],
 
-    // --- Step 3/5: verification & relay (mid_level, leadership) ---
     verification: {
       resumeUrl: String,
       referenceLetterUrl: String,
@@ -62,7 +53,51 @@ const jobSchema = new mongoose.Schema(
       reminderSent: { type: Boolean, default: false },
     },
 
-    // --- Step 6/7: connection & confirmation (mid_level, leadership) ---
+    minExperience: { type: Number, required: true, min: 0 },
+    numberOfOpenings: { type: Number, required: true, min: 1 },
+    applicationDeadline: { type: Date, required: true },
+    workMode: { type: String, enum: ["remote", "hybrid", "on-site"], required: true },
+    jobContactPhone: { type: String, required: true },
+    postingAttested: { type: Boolean, required: true },
+
+    foodProvided: Boolean,
+    transportationProvided: Boolean,
+    workStartDate: Date,
+    workEndDate: Date,
+    workingHours: {
+      start: String,
+      end: String,
+    },
+    instructions: {
+      text: String,
+      durationMinutes: Number,
+      submittedAt: Date,
+      readyAt: Date,
+    },
+
+    requiredSkills: [String],
+    reviewTimer: {
+      durationMinutes: Number,
+      submittedAt: Date,
+      readyAt: Date,
+    },
+
+    minClientProjectExperience: Number,
+    minTeamSizeExperience: Number,
+
+    minDirectReportsToBoard: Number,
+    requiredDomainExpertise: [String],
+
+    interview: {
+      posterEmail: String,
+      reviewedAt: Date,
+      meetingDate: Date,
+      meetingLink: String,
+      scheduledAt: Date,
+      seekerAttendConfirmedAt: Date,
+      finalConfirmedAt: Date,
+    },
+
     connection: {
       contactRevealed: { type: Boolean, default: false },
       meetingLink: String,
@@ -71,16 +106,15 @@ const jobSchema = new mongoose.Schema(
       posterConfirmedCall: { type: Boolean, default: false },
     },
 
-    // --- Step 7/8/9: proof & completion (daily_wage) ---
     proof: {
-      url: String,
+      fileId: String,
+      filename: String,
       note: String,
       submittedAt: Date,
     },
     seekerConfirmed: { type: Boolean, default: false },
     posterConfirmed: { type: Boolean, default: false },
 
-    // --- Step 8: commission (all three, different shape) ---
     commission: {
       type: { type: String, enum: ["percentage", "flat"] },
       amount: Number,
@@ -92,6 +126,25 @@ const jobSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+jobSchema.pre("validate", function () {
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  if (this.workflowType === "daily_wage" && this.workStartDate) {
+    if (new Date(this.workStartDate) <= todayEnd) {
+      throw new Error("workStartDate must be a future date, not today or earlier");
+    }
+  }
+
+  if (this.applicationDeadline) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    if (new Date(this.applicationDeadline) < todayStart) {
+      throw new Error("applicationDeadline cannot be in the past");
+    }
+  }
+});
 
 jobSchema.index({ status: 1, expiresAt: 1 });
 jobSchema.index({ workflowType: 1, status: 1 });

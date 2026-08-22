@@ -10,8 +10,97 @@ Content-Type: application/json
 
 { "name":"Test Seeker","email":"seeker@test.com","password":"password123","phone":"9876500000","role":"seeker" }
 
-### Login (copy token into settings.json -> posterToken / seekerToken)
+### Login (copy token into settings.json -> posterToken)
 POST {{authBaseUrl}}/login
 Content-Type: application/json
 
 { "email":"poster@test.com","password":"password123" }
+
+### Login as seeker (copy token into settings.json -> seekerToken)
+POST {{authBaseUrl}}/login
+Content-Type: application/json
+
+{ "email":"seeker@test.com","password":"password123" }
+
+### Complete profile — poster
+### Run AFTER "Login" above and pasting the returned token into settings.json -> posterToken
+POST {{authBaseUrl}}/complete-profile
+Authorization: Bearer {{posterToken}}
+Content-Type: application/json
+
+{
+  "companyName": "Skyline Builders Pvt Ltd",
+  "industry": "Construction",
+  "companySize": "11-50",
+  "companyAddress": "12 MG Road, Trichy, Tamil Nadu"
+}
+
+### Complete profile — seeker (daily_wage tier)
+### Run AFTER "Login as seeker" above and pasting the returned token into settings.json -> seekerToken
+POST {{authBaseUrl}}/complete-profile
+Authorization: Bearer {{seekerToken}}
+Content-Type: application/json
+
+{
+  "workCategory": "daily_wage",
+  "data": {
+    "trade": "Electrician",
+    "yearsInTrade": 5,
+    "toolsOwned": ["multimeter", "wire stripper"],
+    "languagesSpoken": ["Tamil", "English"],
+    "availableDays": ["Monday", "Tuesday", "Wednesday"],
+    "availableHours": { "start": "09:00", "end": "18:00" },
+    "serviceRadiusKm": 15,
+    "pastJobPhotos": [],
+    "emergencyContact": { "name": "Kumar M", "phone": "9988776655" }
+  }
+}
+
+### Complete profile — seeker (mid_level tier)
+### Use INSTEAD of the daily_wage block above if testing the mid_level workflow.
+POST {{authBaseUrl}}/complete-profile
+Authorization: Bearer {{seekerToken}}
+Content-Type: application/json
+
+{
+  "workCategory": "mid_level",
+  "data": {
+    "currentTitle": "Backend Developer",
+    "totalExperienceYears": 4,
+    "industry": "Software Development",
+    "primarySkills": ["Node.js", "MongoDB", "Express"],
+    "educationLevel": "bachelors",
+    "expectedSalary": { "amount": 90000, "negotiable": true },
+    "availabilityToJoin": "1_month",
+    "resume": { "fileId": "REPLACE_WITH_UPLOADED_FILE_ID", "filename": "resume.pdf" },
+    "headline": "Backend developer specializing in Node.js and API design",
+    "achievement": "Reduced API response time by 40% through query optimization",
+    "location": "Trichy, Tamil Nadu",
+    "willingToRelocate": false,
+    "certifications": ["AWS Certified Developer"],
+    "secondarySkills": ["Docker", "Redis"],
+    "employmentType": ["full_time"]
+  }
+}
+
+### Complete profile — seeker (leadership tier)
+### Use INSTEAD of the daily_wage block above if testing the leadership workflow.
+POST {{authBaseUrl}}/complete-profile
+Authorization: Bearer {{seekerToken}}
+Content-Type: application/json
+
+{
+  "workCategory": "leadership",
+  "data": {
+    "currentTitle": "Engineering Manager",
+    "yearsInLeadership": 6,
+    "teamSizeManaged": 12,
+    "industryFocus": ["Fintech", "SaaS"],
+    "keyAchievements": ["Led migration to microservices", "Cut infra cost 30%"],
+    "referenceContacts": [
+      { "name": "Deepa R", "relationship": "Former VP Engineering", "contact": "deepa.r@example.com", "letterUrl": "https://example.com/ref.pdf" }
+    ],
+    "compensationExpectation": { "base": 2400000, "bonus": 300000, "equity": true, "negotiable": true },
+    "availableFrom": "2026-09-01"
+  }
+}

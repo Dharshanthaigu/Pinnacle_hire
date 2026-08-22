@@ -41,7 +41,17 @@ export const listJobs = async (req, res, next) => {
   }
 };
 
-
+export const listMyJobs = async (req, res, next) => {
+  try {
+    const filter = req.user.role === "poster"
+      ? { postedBy: req.user.id }
+      : { acceptedBy: req.user.id };
+    const jobs = await Job.find(filter).sort({ updatedAt: -1 });
+    res.json(jobs);
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const getJob = async (req, res, next) => {
   try {
@@ -67,7 +77,6 @@ export const updateJob = async (req, res, next) => {
     next(err);
   }
 };
-      
 
 export const deleteJob = async (req, res, next) => {
   try {
