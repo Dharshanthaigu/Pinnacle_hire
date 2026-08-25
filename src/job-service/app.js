@@ -8,7 +8,7 @@ import { logger } from "./config/logger.js";
 import { register, httpRequestDuration } from "./config/metrics.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import jobRoutes from "./routes/jobRoutes.js";
-
+import stripeWebhookRoutes from "./routes/stripeWebhookRoutes.js";
 
 const app = express();
 
@@ -21,6 +21,7 @@ app.use(
     credentials: true,
   })
 );
+app.use("/api/stripe", stripeWebhookRoutes);
 app.use(express.json());
 app.use(
   pinoHttp({
