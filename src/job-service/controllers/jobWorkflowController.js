@@ -1,10 +1,10 @@
-﻿import fetch from "node-fetch";
+import fetch from "node-fetch";
 import Job from "../models/Job.js";
 import mongoose from "mongoose";
 import { runVerification } from "../services/verificationService.js";
 import { approveByHost, confirmByParty } from "../services/approvalService.js";
 import { finalizeJob, updateReputation } from "../services/settlementService.js";
-
+import { createCommissionCheckoutSession } from "../services/stripeService.js";
 
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001";
@@ -175,7 +175,8 @@ export const getSeekerProfile = async (req, res, next) => {
       headers: { Authorization: req.headers.authorization, "x-request-id": req.id },
     });
     if (!response.ok) {
-      return res.status(502).json({ error: "Unable to fetch candidate profile" });
+      const errBody = await response.text().catch(() => "");
+      return res.status(response.status).json({ error: "Unable to fetch candidate profile", upstreamStatus: response.status, upstreamBody: errBody });
     }
     const data = await response.json();
     res.json(data);
@@ -358,8 +359,11 @@ export const approveJob = async (req, res, next) => {
 };
 
 // Single confirm-completion endpoint, used by BOTH roles - seeker first,
-// poster second. Auto-finalizes the moment both are confirmed. No separate
-// /finalize route or button exists anymore.
+// poster second. The moment both are confirmed, this same call finalizes
+// the job (status -> awaiting_payment) AND creates a Stripe Checkout
+// Session, returning checkoutUrl so the frontend can redirect immediately.
+// The job does not become "completed" until the Stripe webhook confirms
+// payment - see stripeWebhookController.js.
 export const confirmJob = async (req, res, next) => {
   try {
     const job = await Job.findById(req.params.id);
@@ -385,8 +389,6 @@ export const confirmJob = async (req, res, next) => {
       if (job.status !== "connecting") {
         return res.status(409).json({ error: "Job must be in the connecting stage before confirming completion" });
       }
-      // Only attendance confirmation is required now - the old readiness
-      // timer step (finalConfirmedAt) has been removed from this gate.
       if (!job.interview?.seekerAttendConfirmedAt) {
         return res.status(409).json({ error: "Seeker must confirm meeting attendance first" });
       }
@@ -402,21 +404,29 @@ export const confirmJob = async (req, res, next) => {
         ? job.seekerConfirmed && job.posterConfirmed
         : job.connection.seekerConfirmedCall && job.connection.posterConfirmedCall;
 
+    let checkoutUrl = null;
+
     if (bothConfirmed) {
       finalizeJob(job);
-    }
+      await job.save();
 
-    await job.save();
-
-    if (job.status === "completed") {
-      try {
-        await updateReputation(job, req.headers.authorization);
-      } catch (repErr) {
-        console.error("Reputation/invoice update failed:", repErr.message);
+      if (isPoster) {
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const session = await createCommissionCheckoutSession({
+          job,
+          successUrl: `${frontendUrl}/jobs/${job._id}?payment=success`,
+          cancelUrl: `${frontendUrl}/jobs/${job._id}?payment=cancelled`,
+        });
+        checkoutUrl = session.url;
       }
+    } else {
+      await job.save();
     }
 
-    res.json(job);
+    const responseBody = job.toObject();
+    if (checkoutUrl) responseBody.checkoutUrl = checkoutUrl;
+
+    res.json(responseBody);
   } catch (err) {
     next(err);
   }
@@ -450,6 +460,30 @@ export const payInvoice = async (req, res, next) => {
     }
 
     res.json(job);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const resumePayment = async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    if (String(job.postedBy) !== req.user.id) {
+      return res.status(403).json({ error: "Only the job poster can resume this payment" });
+    }
+    if (!job.commission?.amount || job.commission.paid) {
+      return res.status(409).json({ error: "No outstanding payment on this job" });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const session = await createCommissionCheckoutSession({
+      job,
+      successUrl: `${frontendUrl}/jobs/${job._id}?payment=success`,
+      cancelUrl: `${frontendUrl}/jobs/${job._id}?payment=cancelled`,
+    });
+
+    res.json({ checkoutUrl: session.url });
   } catch (err) {
     next(err);
   }

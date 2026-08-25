@@ -60,3 +60,11 @@ export function payInvoice(id, token) {
   return apiFetch(JOB_URL, `/api/jobs/${id}/pay-invoice`, { method: "PATCH", headers: authHeaders(token) });
 }
 
+
+export function verifyPayment(sessionId, token) {
+  return apiFetch(JOB_URL, `/api/jobs/verify-payment?sessionId=${sessionId}`, { headers: authHeaders(token) });
+}
+
+export function resumePayment(id, token) {
+  return apiFetch(JOB_URL, `/api/jobs/${id}/resume-payment`, { method: "PATCH", headers: authHeaders(token) });
+}

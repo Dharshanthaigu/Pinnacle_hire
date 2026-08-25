@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import {
   getJob, acceptJob, getSeekerProfile, acceptCandidate, startWork,
   reviewCandidate, scheduleMeeting, confirmAttendance,
-  confirmJob, submitProof, payInvoice
+  confirmJob, submitProof, verifyPayment, resumePayment
 } from "@/lib/api/jobs";
 import { uploadFile } from "@/lib/api/upload";
 
@@ -25,20 +25,40 @@ function formatMs(ms) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// Estimates what the seeker actually receives after commission, using the
-// exact same formula settlementService.js applies at completion. This is a
-// preview only - the real commission isn't set on the job until it's
-// finalized, so this can't be read from the job object before completion.
 function estimatedNetPay(job) {
   if (job.salary?.amount == null) return null;
-  if (job.workflowType === "daily_wage") return Math.round(job.salary.amount * 0.9);
-  if (job.workflowType === "mid_level") return Math.max(0, job.salary.amount - 1500);
-  if (job.workflowType === "leadership") return Math.max(0, job.salary.amount - 5000);
-  return job.salary.amount;
+  const rate = job.workflowType === "daily_wage" ? 0.10 : job.workflowType === "leadership" ? 0.35 : 0.20;
+  return Math.round(job.salary.amount * (1 - rate));
+}
+
+// Clean success popup shown when the browser lands back here with
+// ?payment=success after completing Stripe Checkout.
+function PaymentSuccessModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div className="bg-white rounded-sm shadow-xl max-w-sm w-full p-8 text-center">
+        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+          <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="font-display text-xl font-semibold text-[var(--ink)] mb-2">Payment Complete</h2>
+        <p className="text-sm text-[var(--slate)] mb-6">Commission has been paid and this job is now marked completed.</p>
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 bg-[var(--ink)] text-[var(--paper)] rounded-sm font-medium hover:bg-[var(--slate)] transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function JobDetailPage() {
   const { jobId } = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, token } = useAuth();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +67,7 @@ export default function JobDetailPage() {
   const [actionError, setActionError] = useState("");
   const [seekerProfile, setSeekerProfile] = useState(null);
   const [tick, setTick] = useState(0);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const [proofFile, setProofFile] = useState(null);
   const [proofNote, setProofNote] = useState("");
@@ -65,6 +86,7 @@ export default function JobDetailPage() {
       .catch((err) => setLoadError(err.message || "Failed to load job"))
       .finally(() => setLoading(false));
   }, [jobId, token]);
+
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
@@ -72,16 +94,51 @@ export default function JobDetailPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      getJob(jobId, token).then(setJob).catch(() => { });
+      getJob(jobId, token).then((updated) => {
+        setJob((prev) => {
+          // If we're the seeker and the job just transitioned to paid,
+          // pop the success modal automatically - the poster gets theirs
+          // via the Stripe redirect flow, but the seeker has no redirect
+          // to hook into, so polling is how they find out.
+          if (prev && !prev.commission?.paid && updated.commission?.paid && user && updated.acceptedBy === user.id) {
+            setShowSuccessModal(true);
+          }
+          return updated;
+        });
+      }).catch(() => { });
     }, 5000);
     return () => clearInterval(interval);
-  }, [jobId, token]);
+  }, [jobId, token, user]);
+
+  // Shows the success modal once, when redirected back from Stripe with
+  // ?payment=success. Cleans the query param out of the URL afterward so
+  // a page refresh doesn't re-trigger the popup.
+  useEffect(() => {
+    if (!token) return; // wait for auth-context to finish loading the real token
+    const sessionId = searchParams.get("session_id");
+    if (searchParams.get("payment") === "success") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("payment");
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", url.toString());
+      if (sessionId) {
+        verifyPayment(sessionId, token)
+          .then(() => { reload(); setShowSuccessModal(true); })
+          .catch((err) => { setActionError(err.message || "Payment verification failed"); setShowSuccessModal(true); });
+      } else {
+        setShowSuccessModal(true);
+      }
+    }
+  }, [searchParams, token]);
 
   const isPoster = user && job && job.postedBy === user.id;
 
+  const [seekerProfileError, setSeekerProfileError] = useState("");
   useEffect(() => {
     if (isPoster && job?.acceptedBy && !seekerProfile) {
-      getSeekerProfile(jobId, token).then(setSeekerProfile).catch(() => { });
+      getSeekerProfile(jobId, token)
+        .then(setSeekerProfile)
+        .catch((err) => setSeekerProfileError(`${err.message || "Failed to load profile"} (status: ${err.status})`));
     }
   }, [isPoster, job?.acceptedBy, jobId, token, seekerProfile]);
 
@@ -89,7 +146,14 @@ export default function JobDetailPage() {
     setActing(true);
     setActionError("");
     try {
-      await action();
+      const result = await action();
+      // If confirmJob (or resumePayment) just returned a Stripe checkout
+      // URL, redirect the whole page there immediately instead of
+      // reloading in place.
+      if (result?.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+        return;
+      }
       await reload();
     } catch (err) {
       setActionError(err.message || "Action failed");
@@ -135,7 +199,6 @@ export default function JobDetailPage() {
     const d = new Date();
     d.setDate(d.getDate() + 1);
     d.setHours(0, 0, 0, 0);
-    // datetime-local needs "YYYY-MM-DDTHH:mm" in local time, not UTC ISO string
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`;
   })();
@@ -152,33 +215,31 @@ export default function JobDetailPage() {
 
   const canReviewCandidate = !isDailyWage && isPoster && job.status === "confirmed";
   const canScheduleMeeting = !isDailyWage && isPoster && job.status === "verifying";
-  // Seeker's only step before confirming completion is attendance - the old
-  // readiness-timer step (confirmReady / finalConfirmedAt) no longer exists.
   const canConfirmAttendance = !isDailyWage && isAcceptedSeeker && job.status === "connecting" && !job.interview?.seekerAttendConfirmedAt;
 
   const myConfirmed = isDailyWage
     ? (isPoster ? job.posterConfirmed : isAcceptedSeeker ? job.seekerConfirmed : false)
     : (isPoster ? job.connection?.posterConfirmedCall : isAcceptedSeeker ? job.connection?.seekerConfirmedCall : false);
-  const bothConfirmed = isDailyWage
-    ? job.seekerConfirmed && job.posterConfirmed
-    : job.connection?.seekerConfirmedCall && job.connection?.posterConfirmedCall;
 
-  // Matches the backend's confirmJob gating exactly: for daily_wage, proof
-  // is checked via proof.fileId (not proof.url - that field no longer
-  // exists). For mid/leadership, only attendance confirmation is required now.
   const canConfirm = isParticipant && !myConfirmed && (
     isDailyWage
       ? isAcceptedSeeker
         ? job.status === "awaiting_proof" && !!job.proof?.fileId
         : job.status === "awaiting_proof" && job.seekerConfirmed
-      : job.status === "connecting" && !!job.interview?.seekerAttendConfirmedAt
+      : isAcceptedSeeker
+        ? job.status === "connecting" && !!job.interview?.seekerAttendConfirmedAt
+        : job.status === "connecting" && !!job.interview?.seekerAttendConfirmedAt && job.connection?.seekerConfirmedCall
   );
 
-  const canPayInvoice = isPoster && job.commission?.amount && !job.commission.paid;
-
+  // Poster closed the page (or something failed) before finishing Stripe
+  // checkout - the job is already "completed" but commission is unpaid.
+  // This lets them resume payment from the job page at any time.
+  const canResumePayment = isPoster && job.status === "completed" && job.commission?.amount && !job.commission.paid;
 
   return (
     <main className="min-h-screen bg-[var(--paper)] px-4 py-12">
+      {showSuccessModal && <PaymentSuccessModal onClose={() => { setShowSuccessModal(false); router.push("/dashboard"); }} />}
+
       <div className="w-full max-w-2xl mx-auto">
         <Link href="/dashboard" className="inline-block mb-6 text-sm text-[var(--slate)] hover:text-[var(--ink)] transition-colors">&larr; Back to Dashboard</Link>
 
@@ -228,7 +289,8 @@ export default function JobDetailPage() {
             {isPoster && job.acceptedBy && ["accepted", "confirmed", "verifying", "connecting", "awaiting_proof", "completed"].includes(job.status) && (
               <div className="border border-[var(--slate)]/15 rounded-sm p-4 bg-[var(--paper)]/40">
                 <p className="font-mono text-xs uppercase tracking-wider text-[var(--slate)] mb-2">Candidate Profile</p>
-                {!seekerProfile && <p className="text-sm text-[var(--slate)]">Loading profile...</p>}
+                {!seekerProfile && !seekerProfileError && <p className="text-sm text-[var(--slate)]">Loading profile...</p>}
+                {seekerProfileError && <p className="text-sm text-[var(--flag)]">Error: {seekerProfileError}</p>}
                 {seekerProfile?.candidate && (
                   <div className="text-sm text-[var(--ink)] space-y-1">
                     <p>Name: {seekerProfile.candidate.name}</p>
@@ -352,9 +414,9 @@ export default function JobDetailPage() {
 
             {isParticipant && ((isDailyWage && job.status === "awaiting_proof") || (!isDailyWage && job.status === "connecting")) && (
               <p className="text-sm text-[var(--slate)]">
-                Confirmation: seeker {isDailyWage ? (job.seekerConfirmed ? "?" : "pending") : (job.connection?.seekerConfirmedCall ? "?" : "pending")}
+                Confirmation: seeker {isDailyWage ? (job.seekerConfirmed ? "done" : "pending") : (job.connection?.seekerConfirmedCall ? "done" : "pending")}
                 {" - "}
-                poster {isDailyWage ? (job.posterConfirmed ? "?" : "pending") : (job.connection?.posterConfirmedCall ? "?" : "pending")}
+                poster {isDailyWage ? (job.posterConfirmed ? "done" : "pending") : (job.connection?.posterConfirmedCall ? "done" : "pending")}
               </p>
             )}
 
@@ -365,19 +427,25 @@ export default function JobDetailPage() {
               </button>
             )}
 
-            {job.status === "completed" && (
+            {canResumePayment && (
+              <button onClick={() => run(() => resumePayment(jobId, token))} disabled={acting}
+                className="w-full py-3 bg-[var(--ink)] text-[var(--paper)] rounded-sm font-medium hover:bg-[var(--slate)] transition-colors disabled:opacity-50">
+                {acting ? "Redirecting to Stripe..." : `Complete Payment (${job.salary?.amount})`}
+              </button>
+            )}
+
+            {job.status === "completed" && job.commission?.paid && (
               <p className="text-sm text-[var(--slate)] border-t border-[var(--slate)]/15 pt-4">
-                This job is completed. It finalized automatically once both parties confirmed - no separate finalize step exists.
+                This job is completed - commission paid, no further steps remain.
               </p>
             )}
 
-            {canPayInvoice && (
-              <button onClick={() => run(() => payInvoice(jobId, token))} disabled={acting}
-                className="w-full py-3 border border-[var(--slate)]/30 rounded-sm font-medium text-[var(--ink)] hover:bg-[var(--slate)]/10 transition-colors disabled:opacity-50">
-                {acting ? "Working..." : `Pay Invoice (${job.commission?.amount})`}
-              </button>
+            {job.status === "completed" && !job.commission?.paid && !isPoster && (
+              <p className="text-sm text-[var(--slate)] border-t border-[var(--slate)]/15 pt-4">
+                Both parties have confirmed. Waiting on the poster to complete the commission payment.
+              </p>
             )}
-            
+
             {!user && (
               <p className="text-sm text-[var(--slate)]">
                 <Link href="/login" className="underline">Log in</Link> to interact with this job.
