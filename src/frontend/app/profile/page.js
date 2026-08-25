@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -95,7 +95,6 @@ export default function ProfilePage() {
               toolsOwned: fromArray(d.toolsOwned), languagesSpoken: fromArray(d.languagesSpoken),
               availableDays: fromArray(d.availableDays),
               availableHoursStart: d.availableHours?.start || "", availableHoursEnd: d.availableHours?.end || "",
-              serviceRadiusKm: d.serviceRadiusKm ?? "", pastJobPhotos: fromArray(d.pastJobPhotos),
               emergencyContactName: d.emergencyContact?.name || "", emergencyContactPhone: d.emergencyContact?.phone || "",
             });
           } else if (wc === "mid_level") {
@@ -171,7 +170,6 @@ export default function ProfilePage() {
         toolsOwned: toArray(form.toolsOwned), languagesSpoken: toArray(form.languagesSpoken),
         availableDays: toArray(form.availableDays),
         availableHours: { start: form.availableHoursStart || "", end: form.availableHoursEnd || "" },
-        serviceRadiusKm: Number(form.serviceRadiusKm) || 0, pastJobPhotos: toArray(form.pastJobPhotos),
         emergencyContact: { name: form.emergencyContactName || "", phone: form.emergencyContactPhone || "" },
       };
     }
@@ -304,7 +302,6 @@ export default function ProfilePage() {
                       <div><label className={labelClass}>Hours End <Req /></label><input name="availableHoursEnd" type="time" required value={form.availableHoursEnd || ""} onChange={handleChange} className={inputClass} /></div>
                     </div>
                     <div><label className={labelClass}>Service Radius (km) <Req /></label><input name="serviceRadiusKm" type="number" min="0" required value={form.serviceRadiusKm || ""} onChange={handleChange} className={inputClass} /></div>
-                    <div><label className={labelClass}>Past Job Photo URLs (comma separated)<Opt /></label><input name="pastJobPhotos" value={form.pastJobPhotos || ""} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>Emergency Contact Name <Req /></label><input name="emergencyContactName" required value={form.emergencyContactName || ""} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>Emergency Contact Phone <Req /></label><input name="emergencyContactPhone" required value={form.emergencyContactPhone || ""} onChange={handleChange} className={inputClass} /></div>
                   </>

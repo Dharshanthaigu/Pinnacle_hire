@@ -33,10 +33,11 @@ const jobSchema = new mongoose.Schema(
       type: String,
       enum: [
         "open", "accepted", "instructions_sent", "verifying", "confirmed",
-        "connecting", "awaiting_proof", "completed", "disputed", "expired", "cancelled",
+        "connecting", "awaiting_proof", "awaiting_payment", "completed", "disputed", "expired", "cancelled",
       ],
       default: "open",
     },
+    
     statusHistory: [
       {
         status: String,
