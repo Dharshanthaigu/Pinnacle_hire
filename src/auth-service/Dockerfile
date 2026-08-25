@@ -1,10 +1,7 @@
-FROM node:22-slim
-
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
+FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --production
 COPY . .
 EXPOSE 5001
 CMD ["node", "server.js"]
