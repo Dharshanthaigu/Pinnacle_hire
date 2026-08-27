@@ -411,7 +411,7 @@ export const confirmJob = async (req, res, next) => {
       await job.save();
 
       if (isPoster) {
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
         const session = await createCommissionCheckoutSession({
           job,
           successUrl: `${frontendUrl}/jobs/${job._id}?payment=success`,
@@ -476,7 +476,7 @@ export const resumePayment = async (req, res, next) => {
       return res.status(409).json({ error: "No outstanding payment on this job" });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
     const session = await createCommissionCheckoutSession({
       job,
       successUrl: `${frontendUrl}/jobs/${job._id}?payment=success`,
