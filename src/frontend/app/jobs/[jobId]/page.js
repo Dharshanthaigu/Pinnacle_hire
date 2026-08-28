@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -55,7 +55,7 @@ function PaymentSuccessModal({ onClose }) {
   );
 }
 
-export default function JobDetailPage() {
+function JobDetailContent() {
   const { jobId } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -455,5 +455,15 @@ export default function JobDetailPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function JobDetailPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center bg-[var(--paper)]"><p className="text-[var(--slate)]">Loading...</p></main>
+    }>
+      <JobDetailContent />
+    </Suspense>
   );
 }
